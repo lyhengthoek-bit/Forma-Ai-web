@@ -1,4 +1,6 @@
 local pending={}
+local waitViews={}
+local studio=true
 local function signal()
  local callbacks={};return {Connect=function(self,fn)local c={Connected=true};function c:Disconnect()self.Connected=false end;table.insert(callbacks,{c,fn});return c end,Fire=function(self,...)for _,pair in ipairs(callbacks)do if pair[1].Connected then pair[2](...)end end end}
 end
@@ -34,7 +36,7 @@ local hum=Instance.new("Humanoid");hum.Parent=char;hum.WalkSpeed=16;hum.JumpPowe
 local hrp=Instance.new("Part");hrp.Name="HumanoidRootPart";hrp.Position=vector();hrp.Parent=char
 local services={}
 services.Players={LocalPlayer=p,PlayerAdded=signal(),PlayerRemoving=signal(),GetPlayers=function()return {p}end}
-services.RunService={IsStudio=function()return true end,RenderStepped=signal()}
+services.RunService={IsStudio=function()return studio end,RenderStepped=signal()}
 services.TweenService={Create=function(self,obj,info,props)return {Play=function()for k,v in pairs(props)do obj[k]=v end end}end}
 services.UserInputService={InputBegan=signal(),InputChanged=signal(),InputEnded=signal(),GetFocusedTextBox=function()return nil end,IsMouseButtonPressed=function()return false end,IsKeyDown=function()return false end}
 services.ReplicatedStorage=Instance.new("ReplicatedStorage")
@@ -42,7 +44,11 @@ services.CollectionService={GetTagged=function()return {}end}
 local game={GetService=function(self,k)return assert(services[k],k)end}
 local workspace={CurrentCamera={ViewportSize=vector(1440,900)},FindFirstChild=function()return nil end}
 local TweenInfo={new=function(...)return {...}end}
-local task={spawn=function(fn)table.insert(pending,fn)end,defer=function(fn)table.insert(pending,fn)end,wait=function()end}
+local task={spawn=function(fn)table.insert(pending,fn)end,defer=function(fn)table.insert(pending,fn)end,wait=function()
+ local view={}
+ for _,o in ipairs(objects)do if not o.destroyed and (o.Name=="Access" or o.Name=="Loading" or o.Name=="Workspace")then view[o.Name]=o.Visible end end
+ table.insert(waitViews,view)
+end}
 local function drain()while #pending>0 do table.remove(pending,1)()end end
 local function find(name)for _,o in ipairs(objects)do if o.Name==name and not o.destroyed then return o end end;error("not found: "..name)end
 local function byText(text,parent)for _,o in ipairs(objects)do if o.Text==text and (not parent or o.Parent==parent) and not o.destroyed then return o end end;error("missing text "..text)end
@@ -55,6 +61,8 @@ local key=find("KeyInput");key.Text="wrong";find("Continue").Activated:Fire();dr
 assert(find("Access").Visible and not find("Workspace").Visible,"Invalid key must not unlock")
 key.Text="  FORMA-TEST  ";find("Continue").Activated:Fire();drain()
 assert(not find("Access").Visible and find("Workspace").Visible and not find("Loading").Visible,"Valid key unlocks after loading")
+assert(#waitViews==2,"Two loading stages")
+for _,view in ipairs(waitViews)do assert(view.Loading and not view.Access and not view.Workspace,"Loading visible before main panel")end
 for _,name in ipairs({"Player","Aim","Teleport","Players","ESP","Settings"})do
  find("Nav"..name).Activated:Fire();assert(find(name).Visible,"Page opens: "..name)
 end
@@ -69,4 +77,20 @@ assert(toggle,"aim toggle");toggle.Activated:Fire();assert(api.GetState().aim,"A
 assert(api.GetAimTarget()==nil,"No target without dummy")
 api.Destroy();assert(find==find and not pgui:FindFirstChild("Forma"),"Destroy removes GUI")
 for _,o in ipairs(objects)do assert(o.Name~="FormaFlight"or o.destroyed,"Flight cleaned")end
-print("PASS: initial view, invalid/valid key, loading completion, six pages, minimize/reopen, aim state, cleanup")
+drain()
+studio=false;table.clear(waitViews)
+api=runClient()
+key=find("KeyInput");key.Text="bad";find("Continue").Activated:Fire();drain()
+assert(find("Access").Visible and not find("Workspace").Visible,"Standalone invalid key stays locked")
+key.Text="FORMA-TEST";find("Continue").Activated:Fire();drain()
+assert(find("Workspace").Visible and not find("Access").Visible and not find("Loading").Visible,"Standalone demo key opens main")
+assert(#waitViews==2,"Standalone loading has two stages")
+for _,view in ipairs(waitViews)do assert(view.Loading and not view.Workspace,"Standalone shows loading before main")end
+local movementCard=byText("Walk speed").Parent
+local field
+for _,o in ipairs(movementCard:GetChildren())do if o.ClassName=="TextBox" and o.Position.Y.Offset==50 then field=o end end
+assert(field,"walk-speed field")
+local original=hum.WalkSpeed;field.Text="120";field.FocusLost:Fire(false);drain()
+assert(hum.WalkSpeed==original and api.GetState().speed==original,"Frontend preview does not grant published-game admin commands")
+api.Destroy();drain()
+print("PASS: Studio and standalone key -> loading -> main, invalid keys, six pages, minimize/reopen, aim state, cleanup, published-game command isolation")
