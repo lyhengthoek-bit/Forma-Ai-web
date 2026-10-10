@@ -15,12 +15,16 @@ if previous then previous:Destroy() end
 local C = {white=Color3.fromRGB(255,255,255),ink=Color3.fromRGB(32,32,32),muted=Color3.fromRGB(119,119,119),border=Color3.fromRGB(230,230,230),soft=Color3.fromRGB(246,246,246),red=Color3.fromRGB(176,59,59)}
 local connections, temporary, ownedHighlights, ownedLabels = {}, {}, {}, {}
 local alive, verified, busy, minimized = true, false, false, false
-local state = {speed=16,jump=50,fly=false,flySpeed=50,aim=false,silent=false,smoothing=0.35,fov=120,visibleOnly=true,teamCheck=true,showFov=false,targetMode="Test dummies",targetPart="Torso",esp=false,espTargets="Players",teamOnly=false,names=true,health=true,distance=true,throughWalls=false,glow="Solid",opacity=0.45}
+local state = {speed=16,jump=50,fly=false,flySpeed=50,aim=false,silent=false,smoothing=0.35,fov=120,visibleOnly=true,teamCheck=true,showFov=false,targetMode="Players",targetPart="Torso",esp=false,espTargets="Players",teamOnly=false,names=true,health=true,distance=true,throughWalls=false,glow="Solid",opacity=0.45,hitbox=false,headScale=2,torsoScale=1.5,showHitboxes=true}
 local defaults = table.clone(state)
-local remote, selectedPlayer, selectedPreset, aimTarget
+local remote, selectedPlayer, selectedPreset, aimTarget, silentTarget
+local testTool
+local ownedEffects,ownedHitboxes={},{}
+local glowStyles={"Solid","Lava","Black lava","Rainbow","Void","Black hole lava"}
 local previewOriginal
 local presets = {}
 local api = {}
+local renderBinding="FormaRender_"..tostring(localPlayer.UserId)
 local function connect(signal, fn)
  local c=signal:Connect(fn);table.insert(connections,c);return c
 end
@@ -301,7 +305,7 @@ local go=button(quick,"Go",212,68,76,30,true)
 local coords=label(quick,"Current location: waiting for character",18,104,748,20,12,C.muted)
 connect(go.Activated,function() task.spawn(function() local r=request("teleport",{preset=selectedPreset});if alive then notify(r.ok and "Teleported to "..selectedPreset or r.message,not r.ok) end end) end)
 label(quick,"Use Teleport for coordinates and player destinations.",308,68,450,30,12,C.muted)
-local aimPage=page("Aim","Configure targeting for your game's test session.")
+local aimPage=page("Aim","Configure targeting for your game's test session.",632)
 local aimCard=card(aimPage,"Aim assist / aimbot",0,78,384,218)
 toggle(aimCard,"Enable aim assist",18, 50,348,"aim")
 rule(aimCard,89,384);label(aimCard,"Activation",18,101,150,30,13)
@@ -311,13 +315,29 @@ local silentCard=card(aimPage,"Silent aim",400,78,384,218)
 toggle(silentCard,"Enable silent aim",18,50,348,"silent");rule(silentCard,89,384)
 label(silentCard,"Target part",18,101,150,30,13)
 dropdown(silentCard,188,101,178,{"Torso","Head","Root"},"Torso",function(v)state.targetPart=v end)
-label(silentCard,"Returns a target to your own weapon script.",18,151,348,22,12,C.muted)
+label(silentCard,"Nearest target · independent of camera aim.",18,151,348,22,12,C.muted)
 label(silentCard,"Camera direction stays unchanged.",18,174,348,22,12,C.muted)
 local targeting=card(aimPage,"Targeting",0,312,784,92)
 label(targeting,"Targets",18,50,52,26,12,C.muted)
-local _,updateTargets=dropdown(targeting,72,48,128,{"Test dummies","Players"},"Test dummies",function(v)state.targetMode=v end)
+local _,updateTargets=dropdown(targeting,72,48,128,{"Players","Test dummies"},"Players",function(v)state.targetMode=v end)
 numberField(targeting,"FOV",215,48,133,"fov",20,500)
 check(targeting,"Visible only",370,55,116,"visibleOnly");check(targeting,"Team check",493,55,113,"teamCheck");check(targeting,"Show FOV",625,55,119,"showFov")
+local hitboxCard=card(aimPage,"Head / torso hitboxes",0,420,784,174)
+local function hitboxChanged(_,revert)
+ task.spawn(function()
+  local r=request("hitbox",{enabled=state.hitbox,headScale=state.headScale,torsoScale=state.torsoScale})
+  if not alive then return end
+  if not r.ok then revert();notify(r.message,true)else notify("Test hitboxes updated")end
+ end)
+end
+toggle(hitboxCard,"Enable enlarged hitboxes",18,46,348,"hitbox",hitboxChanged)
+check(hitboxCard,"Show boxes",420,52,210,"showHitboxes")
+numberField(hitboxCard,"Head size (×)",18,86,348,"headScale",1,4,hitboxChanged)
+numberField(hitboxCard,"Torso size (×)",418,86,348,"torsoScale",1,4,hitboxChanged)
+local equipTestWeapon
+local equipButton=button(hitboxCard,"Equip test blaster",18,130,220,30,false)
+connect(equipButton.Activated,function()equipTestWeapon()end)
+label(hitboxCard,"Your server validates shots and enlarged hitboxes.",258,130,508,30,12,C.muted)
 local teleportPage=page("Teleport","Choose a destination in your own game.",468)
 local destinations=card(teleportPage,"Saved destinations",0,78,784,100)
 local _,updateTeleportPreset=dropdown(destinations,18, 50,580,{"Spawn"},"Spawn",function(v) selectedPreset=v;updatePreset(presets,v) end)
@@ -377,9 +397,9 @@ toggle(espCard,"Show through walls",18,139,348,"throughWalls")
 check(espCard,"Names",18,185,95,"names");check(espCard,"Health",130,185,95,"health");check(espCard,"Distance",240,185,112,"distance")
 local glowCard=card(espPage,"Glow",400,78,384,218)
 label(glowCard,"Style",18, 50,130,30,13)
-local _,updateGlow=dropdown(glowCard,166,50,200,{"Solid","Lava","Black lava","Rainbow"},"Solid",function(v)state.glow=v end)
+local _,updateGlow=dropdown(glowCard,166,50,200,glowStyles,"Solid",function(v)state.glow=v end)
 slider(glowCard,"Fill opacity",18,101,348,"opacity",0,1,function(v)return string.format("%d%%",math.round(v*100))end)
-label(glowCard,"Animated color palettes, subtle outlines.",18,174,348,22,12,C.muted)
+label(glowCard,"Void + black lava: rising lightning.",18,174,348,22,12,C.muted)
 local espInfo=card(espPage,"Display",0,312,784,92)
 label(espInfo,"Targets",18,48,56,30,12,C.muted)
 local _,updateEspTargets=dropdown(espInfo,80,48,180,{"Players","Test dummies"},"Players",function(v)state.espTargets=v end)
@@ -395,14 +415,15 @@ local currentPage="Player"
 local function showPage(name)
  currentPage=name;closeMenu()
  for n,p in pairs(pages)do p.Visible=n==name end
- for n,b in pairs(navButtons)do b.BackgroundTransparency=n==name and 0 or 1;b.TextColor3=n==name and C.ink or C.muted end
+ for n,b in pairs(navButtons)do b.BackgroundTransparency=n==name and 0 or 1;b.NavLabel.TextColor3=n==name and C.ink or C.muted end
  if name=="Players"then refreshPlayers()end
  notify(name=="Aim" and "No target selected" or "Ready")
 end
 local nav={{"Player","user"},{"Aim","crosshair"},{"Teleport","map-pin"},{"Players","users"},{"ESP","eye"},{"Settings","settings"}}
 for i,item in ipairs(nav)do
- local name=item[1];local b=button(sidebar,name,12,16+(i-1)*42,142,34,false);b.Name="Nav"..name;b.Font=Enum.Font.Arial;b.TextSize=13;b.TextXAlignment=Enum.TextXAlignment.Left
- create("UIPadding",{PaddingLeft=UDim.new(0,39)},b);icon(b,item[2],12,9,16,C.muted);navButtons[name]=b
+ local name=item[1];local b=button(sidebar,"",12,16+(i-1)*42,142,34,false);b.Name="Nav"..name;b.Font=Enum.Font.Arial;b.TextSize=13;b.TextXAlignment=Enum.TextXAlignment.Left
+ local caption=label(b,name,39,0,98,34,13,C.muted);caption.Name="NavLabel"
+ icon(b,item[2],12,9,16,C.muted);navButtons[name]=b
  connect(b.Activated,function()showPage(name)end)
 end
 showPage("Player")
@@ -410,12 +431,20 @@ local fovRing=frame(gui,0,0,state.fov*2,state.fov*2);fovRing.Name="FovRing";fovR
 local reopen=button(gui,"Forma",16,16,96,34,false);reopen.Name="Reopen";stroke(reopen);reopen.Visible=false
 local function setMinimized(value)closeMenu();minimized=value;root.Visible=verified and not value;reopen.Visible=verified and value end
 connect(reopen.Activated,function()setMinimized(false)end)
+local function clearEffects(model)
+ local effects=ownedEffects[model]
+ if effects then for _,obj in ipairs(effects.objects)do obj:Destroy()end;ownedEffects[model]=nil end
+end
+local function clearHitboxes()
+ for _,box in pairs(ownedHitboxes)do box:Destroy()end;table.clear(ownedHitboxes)
+end
 local function clearEsp()
+ for model in pairs(ownedEffects)do clearEffects(model)end
  for _,h in pairs(ownedHighlights)do h:Destroy()end;table.clear(ownedHighlights)
  for _,b in pairs(ownedLabels)do b:Destroy()end;table.clear(ownedLabels)
 end
 function api.Destroy()
- if not alive then return end;closeMenu();alive=false;state.fly=false;stopFlight();clearEsp();if verified then task.spawn(function()request("reset",{})end)end
+ if not alive then return end;closeMenu();alive=false;RunService:UnbindFromRenderStep(renderBinding);state.fly=false;stopFlight();clearEsp();clearHitboxes();if testTool then testTool:Destroy();testTool=nil end;if verified then task.spawn(function()request("reset",{})end)end
  for _,c in ipairs(connections)do c:Disconnect()end;table.clear(connections)
  for _,obj in ipairs(temporary)do obj:Destroy()end;gui:Destroy()
 end
@@ -481,7 +510,53 @@ local function chooseTarget(camera)
  end
  return closest
 end
-function api.GetAimTarget() return verified and state.silent and aimTarget or nil end
+local function chooseSilentTarget(camera)
+ local closest,best=nil,1000
+ local _,_,rootPart=characterParts();local origin=rootPart and rootPart.Position or camera.CFrame.Position
+ for _,entry in ipairs(targetModels())do
+  local model,p=entry.model,entry.player;local hum=model:FindFirstChildOfClass("Humanoid");local part=targetPart(model)
+  local sameTeam=p and p.Team~=nil and p.Team==localPlayer.Team
+  if part and part:IsA("BasePart") and hum and hum.Health>0 and not(state.teamCheck and sameTeam)then
+   local distance=(part.Position-origin).Magnitude
+   if distance<best then
+    local visible=true
+    if state.visibleOnly then
+     local params=RaycastParams.new();params.FilterType=Enum.RaycastFilterType.Exclude;params.FilterDescendantsInstances=localPlayer.Character and {localPlayer.Character}or {}
+     local hit=workspace:Raycast(origin,part.Position-origin,params);visible=not hit or hit.Instance:IsDescendantOf(model)
+    end
+    if visible then closest=part;best=distance end
+   end
+  end
+ end
+ return closest
+end
+function api.GetAimTarget()
+ if not verified or not state.silent then return nil end
+ local camera=workspace.CurrentCamera
+ silentTarget=camera and chooseSilentTarget(camera) or nil
+ return silentTarget
+end
+function api.GetMouseHit(fallback)
+ local target=api.GetAimTarget();return target and CFrame.new(target.Position) or fallback,target
+end
+local mouseBridge=create("BindableFunction",{Name="GetMouseHit"},gui)
+mouseBridge.OnInvoke=api.GetMouseHit
+equipTestWeapon=function()
+ resolveRemote()
+ if not remote then notify("Install the updated server adapter in your game to use the test blaster.",true);return end
+ if testTool and testTool.Parent then notify("Test blaster is already in your backpack.");return end
+ local backpack=localPlayer:FindFirstChildOfClass("Backpack")
+ if not backpack then notify("Backpack not ready.",true);return end
+ testTool=create("Tool",{Name="Forma Test Blaster",RequiresHandle=false,CanBeDropped=false,ToolTip="Admin test weapon"},backpack)
+ connect(testTool.Activated,function()
+  local mouse=localPlayer:GetMouse();local target=api.GetAimTarget()
+  task.spawn(function()
+   local r=request("shot",{target=target,aimPosition=mouse.Hit.Position,hitbox={enabled=state.hitbox,headScale=state.headScale,torsoScale=state.torsoScale}})
+   if alive then notify(r.ok and (r.hit and "Hit: "..r.hit or "Shot fired") or r.message,not r.ok)end
+  end)
+ end)
+ notify("Test blaster added · equip it, then click to shoot")
+end
 local aimBridge=create("BindableFunction",{Name="GetAimTarget"},gui)
 aimBridge.OnInvoke=function()return api.GetAimTarget()end
 function api.GetState() return table.clone(state) end
@@ -491,6 +566,50 @@ local function glowColor(t,p)
  if state.glow=="Lava"then return Color3.fromRGB(237,70,22):Lerp(Color3.fromRGB(255,168,36),(math.sin(t*2)+1)/2)end
  if state.glow=="Black lava"then return Color3.fromRGB(35,28,28):Lerp(Color3.fromRGB(194,61,26),(math.sin(t*1.8)+1)/2)end
  return p and p.TeamColor.Color or Color3.fromRGB(125,145,164)
+end
+local function updateVoid(model,rootPart,color,t)
+ if not rootPart then return end
+ local effects=ownedEffects[model]
+ if not effects or effects.root~=rootPart then
+  clearEffects(model);effects={root=rootPart,objects={},bolts={}};ownedEffects[model]=effects
+  for bolt=1,2 do
+   local nodes,beams={},{}
+   for i=1,5 do local a=create("Attachment",{Name="FormaVoidNode"},rootPart);nodes[i]=a;table.insert(effects.objects,a)end
+   for i=1,4 do
+    local beam=create("Beam",{Name="FormaVoidLightning",Attachment0=nodes[i],Attachment1=nodes[i+1],Width0=0.065,Width1=0.045,FaceCamera=true,LightEmission=1,LightInfluence=0,Brightness=3,Color=ColorSequence.new(color),Transparency=NumberSequence.new(0.08),Segments=1},rootPart)
+    beams[i]=beam;table.insert(effects.objects,beam)
+   end
+   table.insert(effects.bolts,{nodes=nodes,beams=beams})
+  end
+ end
+ for j,bolt in ipairs(effects.bolts)do
+  local rise=((t*2+j*2.5)%7)-3.5
+  local angle=t*0.5+j*math.pi
+  for i,a in ipairs(bolt.nodes)do
+   local jitter=math.sin(t*24+i*7+j*3)*0.22
+   local radius=1.35+jitter
+   a.Position=Vector3.new(math.cos(angle)*radius+((i%2==0)and 0.22 or -0.22),rise+(i-1)*0.36,math.sin(angle)*radius)
+  end
+  for _,beam in ipairs(bolt.beams)do beam.Color=ColorSequence.new(color);beam.Enabled=rise<2 end
+ end
+end
+local function refreshHitboxes()
+ if not verified or not state.hitbox or not state.showHitboxes then clearHitboxes();return end
+ local seen={}
+ for _,entry in ipairs(targetModels())do
+  local p,model=entry.player,entry.model
+  if not(state.teamCheck and p and p.Team~=nil and p.Team==localPlayer.Team)then
+   for _,name in ipairs({"Head","UpperTorso","LowerTorso","Torso"})do
+    local part=model:FindFirstChild(name)
+    if part and part:IsA("BasePart")then
+     seen[part]=true;local box=ownedHitboxes[part]
+     if not box then box=create("BoxHandleAdornment",{Name="FormaHitboxPreview",Adornee=part,AlwaysOnTop=true,ZIndex=4,Color3=Color3.fromRGB(160,135,215),Transparency=0.78},gui);ownedHitboxes[part]=box end
+     box.Size=part.Size*(name=="Head" and state.headScale or state.torsoScale)
+    end
+   end
+  end
+ end
+ for part,box in pairs(ownedHitboxes)do if not seen[part]then box:Destroy();ownedHitboxes[part]=nil end end
 end
 local function refreshEsp()
  if not verified or not state.esp then if next(ownedHighlights)then clearEsp()end;return end
@@ -502,7 +621,10 @@ local function refreshEsp()
    seen[model]=true
    local h=ownedHighlights[model]
    if not h then h=create("Highlight",{Name="FormaHighlight",Adornee=model},gui);ownedHighlights[model]=h end
-   local color=glowColor(os.clock(),p);h.FillColor=color;h.OutlineColor=color;h.FillTransparency=1-state.opacity;h.OutlineTransparency=0.15;h.DepthMode=state.throughWalls and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+   local t=os.clock();local void=state.glow=="Void" or state.glow=="Black hole lava"
+   local color=void and (state.glow=="Void" and Color3.fromRGB(174,98,255) or Color3.fromRGB(255,108+math.floor(math.sin(t*2)*35),42)) or glowColor(t,p)
+   h.FillColor=void and Color3.fromRGB(0,0,0) or color;h.OutlineColor=color;h.FillTransparency=void and 0 or 1-state.opacity;h.OutlineTransparency=0.15;h.DepthMode=state.throughWalls and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+   if void then updateVoid(model,model:FindFirstChild("HumanoidRootPart"),color,t)else clearEffects(model)end
    local b=ownedLabels[model]
    if not b then b=create("BillboardGui",{Name="FormaEspLabel",Adornee=part,Size=UDim2.fromOffset(240,44),StudsOffset=Vector3.new(0,2,0)},gui);label(b,"",0,0,240,44,12,C.white,true).TextXAlignment=Enum.TextXAlignment.Center;ownedLabels[model]=b end
    local parts={};if state.names then table.insert(parts,p and p.DisplayName or model.Name)end;if state.health then table.insert(parts,tostring(math.round(hum.Health)).." HP")end
@@ -510,13 +632,13 @@ local function refreshEsp()
    b.Adornee=part;b.AlwaysOnTop=state.throughWalls;b.Enabled=#parts>0;b:FindFirstChildOfClass("TextLabel").Text=table.concat(parts," · ")
   end
  end
- for model,h in pairs(ownedHighlights)do if not seen[model]then h:Destroy();ownedHighlights[model]=nil;if ownedLabels[model]then ownedLabels[model]:Destroy();ownedLabels[model]=nil end end end
+ for model,h in pairs(ownedHighlights)do if not seen[model]then clearEffects(model);h:Destroy();ownedHighlights[model]=nil;if ownedLabels[model]then ownedLabels[model]:Destroy();ownedLabels[model]=nil end end end
 end
 connect(localPlayer.CharacterAdded,function()
  state.fly=false;previewOriginal=nil;stopFlight();for _,f in ipairs(refreshers)do f()end
 end)
 connect(resetButton.Activated,function()
- for k,v in pairs(defaults)do state[k]=v end;state.activation="Hold right mouse";stopFlight();clearEsp();updateGlow({"Solid","Lava","Black lava","Rainbow"},"Solid");updateTargets({"Test dummies","Players"},"Test dummies");updateEspTargets({"Players","Test dummies"},"Players")
+ for k,v in pairs(defaults)do state[k]=v end;state.activation="Hold right mouse";stopFlight();clearEsp();clearHitboxes();updateGlow(glowStyles,"Solid");updateTargets({"Players","Test dummies"},"Players");updateEspTargets({"Players","Test dummies"},"Players")
  for _,f in ipairs(refreshers)do f()end
  task.spawn(function()local r=request("reset",{});if alive then notify(r.ok and "Defaults restored" or r.message,not r.ok)end end)
 end)
@@ -539,7 +661,7 @@ local function verify()
 end
 connect(continueButton.Activated,verify);connect(key.FocusLost,function(enter)if enter then verify()end end)
 local espElapsed,infoElapsed=0,0
-connect(RunService.RenderStepped,function(dt)
+local function renderFrame(dt)
  fit();if not verified then return end
  local camera=workspace.CurrentCamera;if not camera then return end
  fovRing.Visible=state.showFov and (state.aim or state.silent);fovRing.Size=UDim2.fromOffset(state.fov*2,state.fov*2)
@@ -562,11 +684,13 @@ connect(RunService.RenderStepped,function(dt)
   flightOrientation.CFrame=camera.CFrame.Rotation
  end
  espElapsed+=dt;infoElapsed+=dt
- if espElapsed>=0.1 then espElapsed=0;refreshEsp()end
+ if espElapsed>=0.05 then espElapsed=0;refreshEsp();refreshHitboxes()end
  if infoElapsed>=1 then
   infoElapsed=0;local _,_,hrp=characterParts();local text=hrp and string.format("Current location:  x %.1f   y %.1f   z %.1f",hrp.Position.X,hrp.Position.Y,hrp.Position.Z)or "Current location: character unavailable";coords.Text=text;currentLocation.Text=text
-  if currentPage=="Players"then refreshPlayers()elseif currentPage=="Aim"then notify(aimTarget and "Target: "..aimTarget.Parent.Name or "No target selected")end
+  if currentPage=="Players"then refreshPlayers()elseif currentPage=="Aim"then notify((state.silent and api.GetAimTarget() or aimTarget) and "Target: "..(state.silent and silentTarget or aimTarget).Parent.Name or "No target selected")end
  end
-end)
+end
+-- Apply camera assist after Roblox's default camera update.
+RunService:BindToRenderStep(renderBinding,Enum.RenderPriority.Camera.Value+1,renderFrame)
 fit()
 return api

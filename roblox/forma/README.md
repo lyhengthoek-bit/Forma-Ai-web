@@ -53,10 +53,10 @@ Those methods are not provided to ordinary Studio LocalScripts. The source itsel
 **Access → Loading → Workspace** preserves the tldraw flow. The loading view uses a restrained animated progress bar and is skipped only when the interface is destroyed.
 
 - **Player:** bounded walk speed and jump power; fly toggle and speed; saved destination quick teleport; live coordinates.
-- **Aim:** hold right mouse or always-on camera aim assist; smoothing; FOV radius; line-of-sight and team checks; target part; separate silent-aim toggle. Defaults to test dummies.
+- **Aim:** hold right mouse or always-on camera aim assist; smoothing; FOV radius; line-of-sight and team checks; target part; separate silent-aim toggle. Defaults to players. Silent targeting uses the nearest eligible target within 1000 studs, even if the camera points at the sky.
 - **Teleport:** saved destinations, numeric coordinates, and another player's position. Server checks every request.
 - **Players:** searchable names, display names, teams, and live coordinates.
-- **ESP:** independent target selection, team-only mode, names/health/distance, through-wall toggle, opacity, and Solid/Lava/Black lava/Rainbow color palettes. Lava themes animate colors on normal Highlights; they are not lava textures.
+- **ESP:** independent target selection, team-only mode, names/health/distance, through-wall toggle, opacity, and Solid/Lava/Black lava/Rainbow color palettes. Lava/Rainbow animate Highlight colors. Void and Black hole lava apply a fully black fill and rising 3D lightning around the character; those effects clean up when ESP is disabled or the character respawns.
 - **Settings:** shortcuts and version information.
 
 Right Ctrl hides/reopens the workspace. The header is draggable. Buttons and toggles support normal Roblox input. The interface scales down to the viewport; flight movement currently uses a keyboard (WASD, Space up, Left Ctrl down). Closing/reloading removes its own GUI, connections, highlights, labels, and flight constraints, and requests a movement reset.
@@ -71,7 +71,7 @@ The public UI/demo key is not a security boundary. The server adapter is. It che
 
 Create a **Workspace → FormaLocations** folder with named BaseParts or Models. Their names appear as teleport choices. A SpawnLocation is automatically exposed as `Spawn`. With no destinations, the displayed Spawn choice reports unavailable until a spawn is added.
 
-Create a **Workspace → TestDummies** folder containing Humanoid Models, or tag those Models **`FormaTarget`** using CollectionService. Aim defaults to those dummies. Aim and ESP each have their own targets dropdown; ESP defaults to players. Team-only ESP shows only teammates with an actual Team assigned.
+Create a **Workspace → TestDummies** folder containing Humanoid Models, or tag those Models **`FormaTarget`** using CollectionService. Choose Test dummies in the Aim dropdown to use those dummies. Aim defaults to players. Aim and ESP each have their own targets dropdown; ESP defaults to players. Team-only ESP shows only teammates with an actual Team assigned.
 
 ## Silent aim integration for your own weapon
 
@@ -95,3 +95,21 @@ Compiled with the official Luau 0.742 compiler. Mocked client checks cover initi
 Run `LUAU_BIN=/path/to/luau python3 tests/run.py` to repeat the behavioral checks. Real Roblox Studio rendering, network latency, mobile gameplay, and character physics still need a playtest. The implementation follows the tldraw layout and style; no claim of pixel-identical Roblox rendering is made without that playtest.
 
 Icons: [Lucide](https://lucide.dev), ISC license. Upstream SVG source and license are included.
+
+## Aim, hitboxes, and void update
+
+Navigation icons now sit beside their labels without inherited padding shifting them into the text. Aim and ESP use independent targets selectors. Aim assist still uses its FOV radius and activation setting; silent aim independently selects the nearest eligible target and leaves the camera unchanged. Team and visibility checks still apply.
+
+**Aim → Equip test blaster** creates a test Tool in your backpack. Equip it and click. With silent aim enabled, the tool sends the chosen target to your own game's Forma server adapter, so pointing at the sky does not change the shot direction. The server validates admin access, session, target, range and line of sight, computes the ray, and applies damage itself. This feature requires the updated server adapter; a GUI-only loader cannot install a server into a published game.
+
+**Aim → Head / torso hitboxes** sets 1–4× hitbox sizes for that test weapon. Larger boxes are calculated in the server ray test and shown as local translucent previews when Show boxes is enabled. The physical character parts remain unchanged. Other weapons are unaffected until their own server shot logic integrates the same behavior.
+
+**ESP → Glow → Void / Black hole lava** covers the character in black, with violet or molten orange lightning moving from bottom to top. These local effects use native Highlights, Attachments, and Beams. Turning off ESP or closing the GUI removes the effects.
+
+On FormaServer, TestDamage defaults to 10 (set it to 0 for hit-only tests). AllowFriendlyFire defaults to false. AdminUserIds and AccessKey still control published-game access.
+
+To upgrade a Studio installation while preserving those server attributes, stop Play mode and paste the contents of [Install-Studio.luau](Install-Studio.luau) into the Command Bar.
+
+For an existing weapon's client code, use [WeaponAim.module.luau](WeaponAim.module.luau). It supplies GetHit(mouse) and GetDirection(origin, mouse), backed by the GUI's GetMouseHit BindableFunction. It does not intercept or modify unrelated guns; your weapon server must validate hits and damage.
+
+Regression checks now also cover navigation label/icon layout, silent targeting with an offscreen target, fully black void fill and Beam creation, hitbox preview scale, effect cleanup, server ray-box near misses, sky-aim redirection, wall blocking, and invalid target denial. Real Studio physics/rendering still need a playtest.
