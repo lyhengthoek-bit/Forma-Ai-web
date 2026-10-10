@@ -34,9 +34,9 @@ server.Parent, client.Parent = serverScripts, scripts
 print("Press Play. Studio preview key: FORMA-TEST")
 ```
 
-Press Play and enter **`FORMA-TEST`**. Studio preview is available only when `RunService:IsStudio()` is true. This demo key does not grant admin access in a published game.
+Press Play and enter **`FORMA-TEST`**. Studio preview is available only when `RunService:IsStudio()` is true. Without a server adapter, this key opens the GUI preview even outside Studio. It does not grant server admin access or enable published-game movement/teleport commands. With the server adapter installed, server key and admin checks remain authoritative.
 
-Alternatively, paste the contents of `Client.luau` into one LocalScript in StarterPlayerScripts. In Studio it supports the GUI preview and local movement without the server adapter. For a published game install the server adapter.
+Alternatively, paste the contents of `Client.luau` into one LocalScript in StarterPlayerScripts. The standalone script accepts FORMA-TEST and displays the key → loading → main flow. In Studio it also supports local movement without the server adapter. Outside Studio it opens the frontend preview, while movement/teleport/flight commands require the server adapter. For a published game install the server adapter.
 
 ## Your custom client loader
 
@@ -90,7 +90,7 @@ If you execute/require the source and retain its returned handle, `handle.GetAim
 
 ## Validation
 
-Compiled with the official Luau 0.742 compiler. Mocked client checks cover initial/invalid/valid key flow, loading completion, all six pages, minimize/reopen, aim toggle state, and cleanup. Mocked server checks cover non-admin denial, verified-session gate, invalid key, NaN/infinity/range validation, teleport application, flight grants, reset to original movement, throttling, and Studio-only preview access.
+Compiled with the official Luau 0.742 compiler. Mocked client checks cover initial/invalid/valid key flow in Studio and standalone contexts, visibility of both loading stages before the main panel opens, all six pages, minimize/reopen, aim toggle state, cleanup, and denial of published-game movement without the server adapter. Mocked server checks cover non-admin denial, verified-session gate, invalid key, NaN/infinity/range validation, teleport application, flight grants, reset to original movement, throttling, and Studio-only preview access.
 
 Run `LUAU_BIN=/path/to/luau python3 tests/run.py` to repeat the behavioral checks. Real Roblox Studio rendering, network latency, mobile gameplay, and character physics still need a playtest. The implementation follows the tldraw layout and style; no claim of pixel-identical Roblox rendering is made without that playtest.
 
