@@ -1,0 +1,21 @@
+{
+  "source": "https://lucide.dev",
+  "upstream": "https://github.com/lucide-icons/lucide",
+  "license": "ISC",
+  "icons": [
+    "user",
+    "crosshair",
+    "map-pin",
+    "users",
+    "eye",
+    "settings",
+    "x",
+    "minus",
+    "chevron-down",
+    "arrow-right",
+    "check",
+    "shield-check",
+    "external-link",
+    "rotate-ccw"
+  ]
+}
