@@ -1,6 +1,6 @@
 -- Forma: native Roblox Studio UI. Lucide icons are embedded below as vector strokes.
 -- Put this source in a LocalScript, or run it in your existing client loader.
--- Studio preview key: FORMA-TEST. Real admin permissions belong to Server.server.luau.
+-- Standalone GUI preview key: FORMA-TEST. Admin permissions belong to Server.server.luau.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -238,8 +238,10 @@ local function request(action,data)
   if ok and type(result)=="table" then return result end
   return {ok=false,message="Server unavailable. Try again."}
  end
- if not RunService:IsStudio() then return {ok=false,message="Install the server package to enable admin access."} end
- if action=="verify" then return {ok=data.key=="FORMA-TEST",message="Use FORMA-TEST for Studio preview.",presets={"Spawn"},mode="Studio preview"} end
+ -- The demo key unlocks the frontend flow, not server admin permissions.
+ -- When a server adapter exists, its verification result above remains authoritative.
+ if action=="verify" then return {ok=data.key=="FORMA-TEST",message="Invalid key. Preview key: FORMA-TEST",presets={"Spawn"},mode="GUI preview"} end
+ if not RunService:IsStudio() then return {ok=false,message="GUI preview: admin commands need the server adapter."} end
  if not verified then return {ok=false,message="Verify your key first."} end
  local char,hum,hrp=characterParts()
  if action=="movement" then
@@ -518,7 +520,7 @@ connect(resetButton.Activated,function()
  for _,f in ipairs(refreshers)do f()end
  task.spawn(function()local r=request("reset",{});if alive then notify(r.ok and "Defaults restored" or r.message,not r.ok)end end)
 end)
-connect(getKey.Activated,function()keyStatus.Text=RunService:IsStudio() and "Studio preview: FORMA-TEST" or "Ask the game owner for your access key.";keyStatus.TextColor3=C.muted end)
+connect(getKey.Activated,function()resolveRemote();keyStatus.Text=remote and "Ask the game owner for your access key." or "GUI preview key: FORMA-TEST";keyStatus.TextColor3=C.muted end)
 local function verify()
  if busy then return end
  local entered=key.Text:match("^%s*(.-)%s*$")
